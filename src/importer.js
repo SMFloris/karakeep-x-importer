@@ -107,6 +107,7 @@ function createXTokenManager({
 
       accessToken = tokens.access_token;
       refreshToken = tokens.refresh_token ?? refreshToken;
+      env.X_REFRESH_TOKEN = refreshToken;
       log.log("X access token received.");
     },
   };

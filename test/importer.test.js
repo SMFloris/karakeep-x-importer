@@ -105,8 +105,9 @@ test("reports individual Karakeep failures and continues", async () => {
     throw new Error(`Unexpected request: ${url}`);
   };
 
+  const env = configuration();
   const result = await runImport({
-    env: configuration(),
+    env,
     fetchImpl: withTokenRefresh(fetchImpl),
     log: silentLog(),
   });
@@ -143,8 +144,9 @@ test("stops at the first bookmark Karakeep already has", async () => {
     throw new Error(`Unexpected request: ${url}`);
   };
 
+  const env = configuration();
   const result = await runImport({
-    env: configuration(),
+    env,
     fetchImpl: withTokenRefresh(fetchImpl),
     log: silentLog(),
   });
@@ -195,8 +197,9 @@ test("uses a rotated refresh token in memory when an X request must retry", asyn
     throw new Error(`Unexpected request: ${url}`);
   };
 
+  const env = configuration();
   const result = await runImport({
-    env: configuration(),
+    env,
     fetchImpl,
     log: silentLog(),
   });
@@ -207,6 +210,7 @@ test("uses a rotated refresh token in memory when an X request must retry", asyn
     "Bearer access-2",
   ]);
   assert.deepEqual(refreshTokens, ["refresh-token", "refresh-1"]);
+  assert.equal(env.X_REFRESH_TOKEN, "refresh-2");
 });
 
 test("uses client authentication when refreshing a confidential client", async () => {

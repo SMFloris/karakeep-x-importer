@@ -108,22 +108,13 @@ for more information.
 
 ## Run the importer
 
-No `npm install` step is necessary because only built-in Node.js APIs are used.
-
-```sh
-npm start
-```
-
-### Run with Docker
-
 Pull a published version from GitHub Container Registry:
 
 ```sh
-docker pull ghcr.io/smfloris/karakeep-x-importer:v0.1
+docker pull ghcr.io/smfloris/karakeep-x-importer:v0.2
 ```
 
-Export the configuration in your shell, then pass each variable explicitly to
-Docker:
+Run the container and poll once per hour:
 
 ```sh
 docker run --rm \
@@ -132,8 +123,13 @@ docker run --rm \
   -e X_CLIENT_SECRET="$X_CLIENT_SECRET" \
   -e KARAKEEP_URL="$KARAKEEP_URL" \
   -e KARAKEEP_API_KEY="$KARAKEEP_API_KEY" \
-  ghcr.io/smfloris/karakeep-x-importer:v0.1
+  ghcr.io/smfloris/karakeep-x-importer:v0.2 \
+  --daemon --every 1h
 ```
+
+Daemon mode imports immediately and then repeats at the configured interval.
+`--every` accepts durations such as `30s`, `15m`, or `1h`; a plain number is
+interpreted as seconds. If `--every` is omitted, the interval defaults to `1h`.
 
 Values already exported in the shell take precedence over values in `.env`.
 The supported configuration is:

@@ -7,4 +7,4 @@ COPY --chown=node:node src ./src
 
 USER node
 
-CMD ["node", "/app/src/index.js"]
+ENTRYPOINT ["node", "/app/src/index.js"]
