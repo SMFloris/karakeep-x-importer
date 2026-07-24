@@ -1,7 +1,25 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { runImport } from "../src/importer.js";
+
+const testTokenFiles = new Set();
+
+function testTokenFile() {
+  const path = join(tmpdir(), `karakeep-x-importer-test-${randomUUID()}`);
+  testTokenFiles.add(path);
+  return path;
+}
+
+test.after(async () => {
+  await Promise.all(
+    [...testTokenFiles].map((path) => rm(path, { force: true })),
+  );
+});
 
 function response(body, status = 200) {
   return new Response(body === null ? null : JSON.stringify(body), {
@@ -18,6 +36,7 @@ function configuration(overrides = {}) {
   return {
     X_REFRESH_TOKEN: "refresh-token",
     X_CLIENT_ID: "client-id",
+    X_TOKEN_FILE: testTokenFile(),
     KARAKEEP_API_KEY: "karakeep-token",
     ...overrides,
   };
@@ -213,6 +232,48 @@ test("uses a rotated refresh token in memory when an X request must retry", asyn
   assert.equal(env.X_REFRESH_TOKEN, "refresh-2");
 });
 
+test("persists a rotated refresh token for a restarted process", async () => {
+  const tokenFile = testTokenFile();
+  const refreshTokens = [];
+  let tokenRequests = 0;
+
+  const fetchImpl = async (url, options = {}) => {
+    const parsed = new URL(url);
+    if (parsed.pathname === "/2/oauth2/token") {
+      tokenRequests += 1;
+      refreshTokens.push(options.body.get("refresh_token"));
+      return response({
+        access_token: `access-${tokenRequests}`,
+        refresh_token: `rotated-${tokenRequests}`,
+      });
+    }
+    if (parsed.pathname === "/2/users/me") {
+      return response({ data: { id: "42" } });
+    }
+    if (parsed.pathname === "/2/users/42/bookmarks") {
+      return response({ data: [], meta: {} });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  await runImport({
+    env: configuration({ X_TOKEN_FILE: tokenFile }),
+    fetchImpl,
+    log: silentLog(),
+  });
+
+  // Simulate a restart with the original environment token.
+  await runImport({
+    env: configuration({ X_TOKEN_FILE: tokenFile }),
+    fetchImpl,
+    log: silentLog(),
+  });
+
+  assert.deepEqual(refreshTokens, ["refresh-token", "rotated-1"]);
+  assert.equal(await readFile(tokenFile, "utf8"), "rotated-2\n");
+  assert.equal((await stat(tokenFile)).mode & 0o777, 0o600);
+});
+
 test("uses client authentication when refreshing a confidential client", async () => {
   const fetchImpl = async (url, options = {}) => {
     const parsed = new URL(url);
@@ -245,14 +306,22 @@ test("uses client authentication when refreshing a confidential client", async (
 test("requires both the refresh token and X client ID", async () => {
   await assert.rejects(
     runImport({
-      env: { X_CLIENT_ID: "client", KARAKEEP_API_KEY: "karakeep" },
+      env: {
+        X_CLIENT_ID: "client",
+        X_TOKEN_FILE: testTokenFile(),
+        KARAKEEP_API_KEY: "karakeep",
+      },
       log: silentLog(),
     }),
     /X_REFRESH_TOKEN/,
   );
   await assert.rejects(
     runImport({
-      env: { X_REFRESH_TOKEN: "refresh", KARAKEEP_API_KEY: "karakeep" },
+      env: {
+        X_REFRESH_TOKEN: "refresh",
+        X_TOKEN_FILE: testTokenFile(),
+        KARAKEEP_API_KEY: "karakeep",
+      },
       log: silentLog(),
     }),
     /X_CLIENT_ID/,

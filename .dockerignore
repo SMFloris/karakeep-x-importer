@@ -3,6 +3,7 @@
 .env
 .env.*
 !.env.example
+secrets.txt
 node_modules
 coverage
 test

@@ -1,4 +1,9 @@
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+
 const X_API_BASE = "https://api.x.com/2";
+const DEFAULT_X_TOKEN_FILE = "/tmp/karakeep-x-importer/refresh-token";
 
 function required(env, name) {
   const value = env[name]?.trim();
@@ -60,16 +65,49 @@ async function requestXJson(fetchImpl, tokenManager, url) {
   }
 }
 
-function createXTokenManager({
+async function readRefreshToken(tokenFile) {
+  try {
+    const token = (await readFile(tokenFile, "utf8")).trim();
+    return token || undefined;
+  } catch (error) {
+    if (error.code === "ENOENT") return undefined;
+    throw new Error(`Could not read X token file ${tokenFile}: ${error.message}`);
+  }
+}
+
+async function writeRefreshToken(tokenFile, refreshToken) {
+  await mkdir(dirname(tokenFile), { recursive: true, mode: 0o700 });
+  const temporaryFile = `${tokenFile}.${process.pid}.${randomUUID()}.tmp`;
+
+  try {
+    await writeFile(temporaryFile, `${refreshToken}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    await rename(temporaryFile, tokenFile);
+  } catch (error) {
+    await rm(temporaryFile, { force: true }).catch(() => {});
+    throw new Error(`Could not persist X refresh token to ${tokenFile}: ${error.message}`);
+  }
+}
+
+async function createXTokenManager({
   env,
   fetchImpl,
   xApiBase,
   log,
 }) {
   let accessToken;
-  let refreshToken = required(env, "X_REFRESH_TOKEN");
+  const tokenFile = env.X_TOKEN_FILE?.trim() || DEFAULT_X_TOKEN_FILE;
+  const storedRefreshToken = await readRefreshToken(tokenFile);
+  let refreshToken = storedRefreshToken ?? required(env, "X_REFRESH_TOKEN");
   const clientId = required(env, "X_CLIENT_ID");
   const clientSecret = env.X_CLIENT_SECRET?.trim();
+
+  if (storedRefreshToken) {
+    log.log(`Loaded the X refresh token from ${tokenFile}.`);
+  }
 
   return {
     get accessToken() {
@@ -108,6 +146,7 @@ function createXTokenManager({
       accessToken = tokens.access_token;
       refreshToken = tokens.refresh_token ?? refreshToken;
       env.X_REFRESH_TOKEN = refreshToken;
+      await writeRefreshToken(tokenFile, refreshToken);
       log.log("X access token received.");
     },
   };
@@ -176,7 +215,7 @@ export async function runImport({
   const serverUrl = env.KARAKEEP_URL?.trim() || "http://localhost:3000";
   const xApiBase = env.X_API_BASE?.trim().replace(/\/+$/, "") || X_API_BASE;
   const apiBase = karakeepApiBase(serverUrl);
-  const tokenManager = createXTokenManager({
+  const tokenManager = await createXTokenManager({
     env,
     fetchImpl,
     xApiBase,
