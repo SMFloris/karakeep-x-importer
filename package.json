@@ -1,0 +1,15 @@
+{
+  "name": "karakeep-x-bookmarks",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Import X bookmarks into Karakeep",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
